@@ -19,7 +19,6 @@ impl ObwsConnector {
         }
     }
 
-    #[allow(dead_code)]
     fn client(&self) -> Result<&Client> {
         self.client
             .as_ref()
