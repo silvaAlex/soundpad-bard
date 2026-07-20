@@ -1,5 +1,5 @@
 pub mod app;
-pub mod views;
 pub mod tray;
+pub mod views;
 
 pub use app::SoundpadApp;
