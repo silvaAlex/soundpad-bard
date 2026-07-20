@@ -1,3 +1,4 @@
+use crate::domain::entities::BardState;
 use crate::ui::app::SoundpadApp;
 use eframe::egui;
 
@@ -22,13 +23,16 @@ pub fn show(ui: &mut egui::Ui, app: &mut SoundpadApp) {
     ui.separator();
 
     ui.horizontal(|ui| {
-        let btn_label = if app.bard_playing { "Pausar" } else { "Tocar" };
+        let is_active = matches!(app.bard_state, BardState::Playing | BardState::Ducked);
+        let btn_label = if is_active { "Pausar" } else { "Tocar" };
         if ui.button(btn_label).clicked() {
             app.bard_toggle();
         }
         if ui.button("Proxima").clicked() {
             app.bard_skip();
         }
+        ui.separator();
+        ui.label(format!("Estado: {}", app.bard_state));
     });
 
     ui.separator();
@@ -91,10 +95,12 @@ pub fn show(ui: &mut egui::Ui, app: &mut SoundpadApp) {
     if !app.logs.is_empty() {
         ui.separator();
         ui.label("Log:");
-        egui::ScrollArea::vertical().max_height(100.0).show(ui, |ui| {
-            for log in app.logs.iter().rev().take(20) {
-                ui.label(log);
-            }
-        });
+        egui::ScrollArea::vertical()
+            .max_height(100.0)
+            .show(ui, |ui| {
+                for log in app.logs.iter().rev().take(20) {
+                    ui.label(log);
+                }
+            });
     }
 }

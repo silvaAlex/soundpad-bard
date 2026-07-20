@@ -44,14 +44,15 @@ pub fn show(ui: &mut egui::Ui, app: &mut SoundpadApp) {
         if ui.button("Adicionar").clicked() {
             if !app.new_clip_filename.is_empty() && !app.new_clip_hotkey.is_empty() {
                 let id = format!("clip_{}", app.config.soundpad.clips.len());
-                app.config.soundpad.clips.push(
-                    crate::domain::entities::SoundpadClip {
+                app.config
+                    .soundpad
+                    .clips
+                    .push(crate::domain::entities::SoundpadClip {
                         id,
                         filename: app.new_clip_filename.clone(),
                         hotkey: app.new_clip_hotkey.clone(),
                         volume: app.new_clip_volume,
-                    },
-                );
+                    });
                 app.new_clip_filename.clear();
                 app.new_clip_hotkey.clear();
                 app.new_clip_volume = 0.8;
@@ -86,18 +87,20 @@ pub fn show(ui: &mut egui::Ui, app: &mut SoundpadApp) {
     }
 
     for i in remove_indices.into_iter().rev() {
-        app.config.soundpad.clips.remove(i);
+        let removed = app.config.soundpad.clips.remove(i);
+        app.unregister_clip_hotkey(&removed);
         app.save_config();
-        app.sync_hotkeys();
     }
 
     if !app.logs.is_empty() {
         ui.separator();
         ui.label("Log:");
-        egui::ScrollArea::vertical().max_height(100.0).show(ui, |ui| {
-            for log in app.logs.iter().rev().take(20) {
-                ui.label(log);
-            }
-        });
+        egui::ScrollArea::vertical()
+            .max_height(100.0)
+            .show(ui, |ui| {
+                for log in app.logs.iter().rev().take(20) {
+                    ui.label(log);
+                }
+            });
     }
 }
