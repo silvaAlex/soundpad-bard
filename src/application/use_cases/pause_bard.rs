@@ -1,18 +1,16 @@
-use crate::application::ports::{ConfigRepository, ObsConnector};
+use crate::application::ports::ObsConnector;
+use crate::domain::entities::AppConfig;
 use anyhow::Result;
 
-#[allow(dead_code)]
-pub struct PauseBard<'a, O: ObsConnector, C: ConfigRepository> {
-    pub obs: &'a mut O,
-    pub config: &'a C,
+pub struct PauseBard<'a, O: ObsConnector> {
+    pub obs: &'a O,
+    pub config: &'a AppConfig,
 }
 
-#[allow(dead_code)]
-impl<'a, O: ObsConnector, C: ConfigRepository> PauseBard<'a, O, C> {
-    pub async fn execute(&mut self) -> Result<()> {
-        let config = self.config.load()?;
+impl<'a, O: ObsConnector> PauseBard<'a, O> {
+    pub async fn execute(&self) -> Result<()> {
         self.obs
-            .set_source_volume(&config.obs.bgm_source, 0.0)
+            .set_source_volume(&self.config.obs.bgm_source, 0.0)
             .await?;
         Ok(())
     }

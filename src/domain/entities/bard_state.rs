@@ -2,7 +2,6 @@
 /// estado, não uma flag de volume solta. Isso evita o tipo de bug de
 /// transição implícita (ex: um "stop" que deveria só desducar mas
 /// acaba levando pra Idle).
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BardState {
     Idle,
@@ -12,8 +11,18 @@ pub enum BardState {
     Paused,
 }
 
+impl std::fmt::Display for BardState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BardState::Idle => write!(f, "Inativo"),
+            BardState::Playing => write!(f, "Tocando"),
+            BardState::Ducked => write!(f, "Ducked"),
+            BardState::Paused => write!(f, "Pausado"),
+        }
+    }
+}
+
 impl BardState {
-    #[allow(dead_code)]
     pub fn can_transition_to(&self, next: BardState) -> bool {
         use BardState::*;
         matches!(
