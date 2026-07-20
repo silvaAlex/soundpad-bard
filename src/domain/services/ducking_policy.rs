@@ -1,6 +1,5 @@
 /// Regra de ducking: calcula o volume efetivo do Bgm dado seu volume base
 /// e quantos SFX estão tocando agora. Pura, sem I/O — fácil de testar isolada.
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct DuckingPolicy {
     /// Proporção do volume base mantida durante ducking (ex: 0.25 = cai pra 25%).
@@ -21,9 +20,6 @@ impl Default for DuckingPolicy {
 }
 
 impl DuckingPolicy {
-    /// active_sfx_count é um contador, não um boolean — múltiplos SFX em
-    /// sequência não devem fazer o Bgm subir e descer entre cada um.
-    #[allow(dead_code)]
     pub fn target_volume(&self, bgm_base_volume: f32, active_sfx_count: u32) -> f32 {
         if active_sfx_count > 0 {
             bgm_base_volume * self.duck_ratio

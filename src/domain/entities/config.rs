@@ -1,3 +1,4 @@
+use super::audio_clip::{AudioChannel, AudioClip};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -31,6 +32,21 @@ pub struct SoundpadClip {
     pub filename: String,
     pub hotkey: String,
     pub volume: f32,
+}
+
+impl SoundpadClip {
+    pub fn channel(&self) -> AudioChannel {
+        AudioChannel::Sfx
+    }
+
+    pub fn to_audio_clip(&self, base_dir: &std::path::Path) -> AudioClip {
+        AudioClip::new(
+            &self.id,
+            base_dir.join(&self.filename),
+            self.channel(),
+            self.volume,
+        )
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
