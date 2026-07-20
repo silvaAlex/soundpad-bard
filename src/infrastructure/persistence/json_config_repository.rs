@@ -1,5 +1,6 @@
 use crate::application::ports::ConfigRepository;
 use crate::domain::entities::AppConfig;
+use crate::infrastructure::crypto::{decrypt_password, encrypt_password};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 
@@ -25,10 +26,17 @@ impl ConfigRepository for JsonConfigRepository {
             return Ok(config);
         }
 
-        let content = std::fs::read_to_string(&self.path)
-            .context("falha ao ler arquivo de configuracao")?;
-        let config: AppConfig =
+        let content =
+            std::fs::read_to_string(&self.path).context("falha ao ler arquivo de configuracao")?;
+        let mut config: AppConfig =
             serde_json::from_str(&content).context("falha ao parsear arquivo de configuracao")?;
+
+        if let Some(ref pwd) = config.obs.password {
+            config.obs.password = Some(
+                decrypt_password(pwd).context("falha ao descriptografar senha do OBS")?,
+            );
+        }
+
         Ok(config)
     }
 
@@ -37,8 +45,15 @@ impl ConfigRepository for JsonConfigRepository {
             std::fs::create_dir_all(parent).context("falha ao criar diretorio de configuracao")?;
         }
 
-        let content =
-            serde_json::to_string_pretty(config).context("falha ao serializar configuracao")?;
+        let mut config_to_save = config.clone();
+        if let Some(ref pwd) = config_to_save.obs.password {
+            config_to_save.obs.password = Some(
+                encrypt_password(pwd).context("falha ao criptografar senha do OBS")?,
+            );
+        }
+
+        let content = serde_json::to_string_pretty(&config_to_save)
+            .context("falha ao serializar configuracao")?;
 
         let tmp_path = self.path.with_extension("json.tmp");
         std::fs::write(&tmp_path, &content)
