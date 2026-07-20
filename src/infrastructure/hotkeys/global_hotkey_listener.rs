@@ -1,33 +1,34 @@
 use crate::application::ports::HotkeyListener;
 use crate::domain::entities::Hotkey;
 use anyhow::{Context, Result};
-use global_hotkey::{hotkey::HotKey, GlobalHotKeyManager};
+use global_hotkey::{hotkey::HotKey, GlobalHotKeyEvent, GlobalHotKeyManager};
 use std::collections::HashMap;
 use std::str::FromStr;
 
-#[allow(dead_code)]
+//infrastructure/hotkeys/global_hotkey_listener
+
 pub struct GlobalHotkeyListener {
     manager: GlobalHotKeyManager,
     registered: HashMap<u32, HotKey>,
 }
 
-#[allow(dead_code)]
 impl GlobalHotkeyListener {
     pub fn new() -> Result<Self> {
-        let manager = GlobalHotKeyManager::new()
-            .context("falha ao iniciar o gerenciador de hotkeys do SO")?;
+        let manager = GlobalHotKeyManager::new()?;
         Ok(Self {
             manager,
             registered: HashMap::new(),
         })
     }
 
-    pub fn manager(&self) -> &GlobalHotKeyManager {
-        &self.manager
+}
+
+impl Default for GlobalHotkeyListener { 
+    fn default() -> Self {
+        Self::new().unwrap()
     }
 }
 
-#[allow(dead_code)]
 impl HotkeyListener for GlobalHotkeyListener {
     fn register(&mut self, hotkey: &Hotkey) -> Result<u32> {
         let hk = HotKey::from_str(hotkey.as_str())
@@ -47,5 +48,13 @@ impl HotkeyListener for GlobalHotkeyListener {
                 .context("falha ao desregistrar hotkey")?;
         }
         Ok(())
+    }
+
+    fn poll_events(&mut self) -> Vec<u32> {
+        let mut fired = Vec::new();
+        while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
+            fired.push(event.id);
+        }
+        fired
     }
 }

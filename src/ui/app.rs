@@ -1,12 +1,11 @@
-use crate::application::ports::{ConfigRepository, ObsConnector};
+use crate::application::ports::{ConfigRepository, HotkeyListener, ObsConnector};
 use crate::domain::entities::SoundpadClip;
+use crate::infrastructure::hotkeys::GlobalHotkeyListener;
 use crate::infrastructure::obs::ObwsConnector;
 use crate::infrastructure::persistence::JsonConfigRepository;
 use eframe::egui;
-use global_hotkey::{hotkey::HotKey, GlobalHotKeyEvent, GlobalHotKeyManager};
 use rand::seq::SliceRandom;
 use std::collections::HashMap;
-use std::str::FromStr;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
@@ -32,8 +31,8 @@ pub struct SoundpadApp {
     pub connector: Option<Arc<ObwsConnector>>,
     connect_rx: Option<mpsc::Receiver<Result<ObwsConnector, String>>>,
 
-    hotkey_manager: GlobalHotKeyManager,
-    registered_hotkeys: HashMap<String, HotKey>,
+    hotkey_listener: Box<dyn HotkeyListener>,
+    registered_hotkeys: HashMap<String, u32>,
     hotkey_to_clip: HashMap<u32, String>,
     bard_last_tick: Option<Instant>,
 }
@@ -43,8 +42,13 @@ impl SoundpadApp {
         let repo = JsonConfigRepository::new(JsonConfigRepository::default_path());
         let config = repo.load().unwrap_or_default();
 
-        let hotkey_manager =
-            GlobalHotKeyManager::new().expect("falha ao criar GlobalHotKeyManager");
+        let hotkey_listener: Box<dyn HotkeyListener> = match GlobalHotkeyListener::new() {
+            Ok(listener) => Box::new(listener),
+            Err(e) => {
+                eprintln!("Falha ao criar listener de hotkeys: {}", e);
+                Box::new(GlobalHotkeyListener::default())
+            }
+        };
 
         Self {
             tab: Tab::default(),
@@ -59,12 +63,39 @@ impl SoundpadApp {
             runtime: tokio::runtime::Runtime::new().expect("falha ao criar tokio runtime"),
             connector: None,
             connect_rx: None,
-            hotkey_manager,
+            hotkey_listener,
             registered_hotkeys: HashMap::new(),
             hotkey_to_clip: HashMap::new(),
             bard_last_tick: None,
         }
     }
+
+    #[cfg(test)]
+    pub fn new_with_listener(listener: Box<dyn HotkeyListener>) -> Self {
+        let repo = JsonConfigRepository::new(JsonConfigRepository::default_path());
+        let config = repo.load().unwrap_or_default();
+ 
+        Self {
+            tab: Tab::default(),
+            config,
+            obs_connected: false,
+            bard_playing: false,
+            current_song: None,
+            logs: Vec::new(),
+            new_clip_filename: String::new(),
+            new_clip_hotkey: String::new(),
+            new_clip_volume: 0.8,
+            runtime: tokio::runtime::Runtime::new()
+                .expect("falha ao criar tokio runtime"),
+            connector: None,
+            connect_rx: None,
+            hotkey_listener: listener,
+            registered_hotkeys: HashMap::new(),
+            hotkey_to_clip: HashMap::new(),
+            bard_last_tick: None,
+        }
+    }
+
 
     // ── OBS connection ─────────────────────────────────────────────
 
@@ -140,7 +171,7 @@ impl SoundpadApp {
 
     pub(crate) fn sync_hotkeys(&mut self) {
         self.unregister_all_hotkeys();
-
+ 
         let clips: Vec<SoundpadClip> = self.config.soundpad.clips.clone();
         for clip in &clips {
             if let Err(e) = self.register_clip_hotkey(clip) {
@@ -153,35 +184,44 @@ impl SoundpadApp {
     }
 
     fn register_clip_hotkey(&mut self, clip: &SoundpadClip) -> anyhow::Result<()> {
-        let hk = HotKey::from_str(&clip.hotkey)
-            .map_err(|e| anyhow::anyhow!("hotkey invalida '{}': {e}", clip.hotkey))?;
-        let id = hk.id();
 
-        self.hotkey_manager
-            .register(hk.clone())
-            .map_err(|e| anyhow::anyhow!("falha ao registrar no SO: {e}"))?;
+        let hotkey = crate::domain::entities::Hotkey::new(&clip.hotkey);
+        
+        let id = self.hotkey_listener.register(&hotkey)
+            .map_err(|e| anyhow::anyhow!(
+                "falha ao registrar hotkey '{}': {e}", 
+                clip.hotkey
+            ))?;
 
-        self.registered_hotkeys.insert(clip.id.clone(), hk);
+        self.registered_hotkeys.insert(clip.id.clone(), id);
         self.hotkey_to_clip.insert(id, clip.id.clone());
         Ok(())
     }
 
     fn unregister_all_hotkeys(&mut self) {
-        for (_, hk) in self.registered_hotkeys.drain() {
-            let _ = self.hotkey_to_clip.remove(&hk.id());
-            let _ = self.hotkey_manager.unregister(hk);
+        // ✅ MUDANÇA: Iterar IDs e desregistrar via listener
+        let ids_to_remove: Vec<u32> = self.registered_hotkeys.values().copied().collect();
+        
+        for id in ids_to_remove {
+            if let Err(e) = self.hotkey_listener.unregister(id) {
+                self.add_log(format!("erro ao desregistrar hotkey {}: {e}", id));
+            }
         }
+ 
+        self.registered_hotkeys.clear();
+        self.hotkey_to_clip.clear();
     }
+
 
     // ── Hotkey event polling (called every frame) ──────────────────
 
     pub(crate) fn poll_hotkey_events(&mut self) {
-        let mut to_play = Vec::new();
-        while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
-            if let Some(clip_id) = self.hotkey_to_clip.get(&event.id).cloned() {
-                to_play.push(clip_id);
-            }
-        }
+        let fired = self.hotkey_listener.poll_events();
+        let to_play: Vec<String> = fired
+            .iter()
+            .filter_map(|id| self.hotkey_to_clip.get(id).cloned())
+            .collect();
+
         for clip_id in to_play {
             self.play_clip_by_id(&clip_id);
         }
@@ -375,12 +415,10 @@ impl eframe::App for SoundpadApp {
             });
         });
 
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            match self.tab {
-                Tab::Soundpad => crate::ui::views::soundpad_view::show(ui, self),
-                Tab::Bard => crate::ui::views::bard_view::show(ui, self),
-                Tab::Settings => crate::ui::views::settings_view::show(ui, self),
-            }
+        egui::CentralPanel::default().show_inside(ui, |ui| match self.tab {
+            Tab::Soundpad => crate::ui::views::soundpad_view::show(ui, self),
+            Tab::Bard => crate::ui::views::bard_view::show(ui, self),
+            Tab::Settings => crate::ui::views::settings_view::show(ui, self),
         });
     }
 }

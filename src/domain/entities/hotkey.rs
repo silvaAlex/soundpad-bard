@@ -8,7 +8,10 @@ pub struct Hotkey {
 }
 
 impl Hotkey {
-    #[allow(dead_code)]
+    pub fn new(raw: &str) -> Self {
+        Self { normalized: raw.to_string() }
+    }
+
     pub fn parse(raw: &str) -> Result<Self, String> {
         let mut parts: Vec<String> = raw
             .split('+')
@@ -31,7 +34,6 @@ impl Hotkey {
         })
     }
 
-    #[allow(dead_code)]
     pub fn as_str(&self) -> &str {
         &self.normalized
     }
