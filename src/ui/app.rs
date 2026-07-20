@@ -8,6 +8,7 @@ use rand::seq::SliceRandom;
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
 #[derive(Default, PartialEq)]
 pub enum Tab {
@@ -28,7 +29,7 @@ pub struct SoundpadApp {
     pub new_clip_hotkey: String,
     pub new_clip_volume: f32,
     pub runtime: tokio::runtime::Runtime,
-    pub connector: Option<Arc<ObwsConnector>>,
+    pub connector: Option<Arc<Mutex<ObwsConnector>>>,
     connect_rx: Option<mpsc::Receiver<Result<ObwsConnector, String>>>,
 
     hotkey_listener: Box<dyn HotkeyListener>,
@@ -126,7 +127,7 @@ impl SoundpadApp {
         if let Some(rx) = &self.connect_rx {
             match rx.try_recv() {
                 Ok(Ok(connector)) => {
-                    self.connector = Some(Arc::new(connector));
+                    self.connector = Some(Arc::new(Mutex::new(connector)));
                     self.obs_connected = true;
                     self.add_log("Conectado ao OBS com sucesso!".into());
                     self.sync_hotkeys();
@@ -254,18 +255,22 @@ impl SoundpadApp {
         let clip_name = clip.filename.clone();
 
         self.runtime.handle().spawn(async move {
-            let _ = connector.set_source_volume(&source, volume).await;
-            if let Err(e) = connector.play_sfx(&source, &file_str).await {
+            let obs = connector.lock().await;
+            let _ = obs.set_source_volume(&source, volume).await;
+            if let Err(e) = obs.play_sfx(&source, &file_str).await {
                 eprintln!("[SFX] {e}");
                 return;
             }
-            let _ = connector
+            let _ = obs
                 .set_ducking_filter_enabled(&bgm_source, &ducking_filter, true)
                 .await;
 
+            // Libera o lock durante o sleep para não bloquear outras operações
+            drop(obs);
             tokio::time::sleep(Duration::from_millis(ducking_ms)).await;
 
-            let _ = connector
+            let obs = connector.lock().await;
+            let _ = obs
                 .set_ducking_filter_enabled(&bgm_source, &ducking_filter, false)
                 .await;
         });
@@ -351,8 +356,9 @@ impl SoundpadApp {
         let volume = self.config.bard.volume;
 
         self.runtime.handle().spawn(async move {
-            let _ = connector.set_source_volume(&source, volume).await;
-            if let Err(e) = connector.play_sfx(&source, &file_str).await {
+            let obs = connector.lock().await;
+            let _ = obs.set_source_volume(&source, volume).await;
+            if let Err(e) = obs.play_sfx(&source, &file_str).await {
                 eprintln!("[BGM] {e}");
             }
         });
@@ -365,7 +371,8 @@ impl SoundpadApp {
         let source = self.config.obs.bgm_source.clone();
 
         self.runtime.handle().spawn(async move {
-            let _ = connector.set_source_volume(&source, 0.0).await;
+            let obs = connector.lock().await;
+            let _ = obs.set_source_volume(&source, 0.0).await;
         });
     }
 

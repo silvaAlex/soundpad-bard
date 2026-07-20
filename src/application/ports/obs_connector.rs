@@ -2,9 +2,7 @@ use anyhow::Result;
 
 /// Porta para o OBS. A camada application só depende disso — não sabe
 /// se por baixo é `obws`/WebSocket ou, futuramente, bindings de plugin nativo.
-#[allow(async_fn_in_trait)]
-#[allow(dead_code)]
-pub trait ObsConnector {
+pub trait ObsConnector: Send {
     async fn connect(&mut self) -> Result<()>;
 
     /// Toca um SFX pontual numa media source do OBS.
