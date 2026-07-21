@@ -1,4 +1,4 @@
-# Soundpad / Bard Minstrel
+# ![icon](./assets/icon-1024.png) Soundpad / Bard Minstrel
 
 Aplicacao desktop para streamers que combina um **Soundpad** de efeitos sonoros com um **Bard Minstrel** de musica de fundo, ambos integrados ao OBS Studio via WebSocket.
 

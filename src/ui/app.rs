@@ -5,11 +5,15 @@ use crate::domain::services::HotkeyConflictChecker;
 use crate::infrastructure::hotkeys::GlobalHotkeyListener;
 use crate::infrastructure::obs::ObwsConnector;
 use crate::infrastructure::persistence::JsonConfigRepository;
+use crate::ui::tray::{self, TrayAction};
+use crossbeam_channel::Receiver;
 use eframe::egui;
+use muda::MenuEvent;
 use rand::seq::SliceRandom;
 use std::collections::HashMap;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
+use tray_icon::TrayIcon;
 
 //ui/app
 
@@ -39,6 +43,10 @@ pub struct SoundpadApp {
     hotkey_checker: HotkeyConflictChecker,
     hotkey_to_clip: HashMap<u32, String>,
     bard_last_tick: Option<Instant>,
+
+    _tray_icon: Option<TrayIcon>,
+    tray_rx: Option<Receiver<MenuEvent>>,
+    window_visible: bool,
 }
 
 impl SoundpadApp {
@@ -51,6 +59,14 @@ impl SoundpadApp {
             Err(e) => {
                 eprintln!("Falha ao criar listener de hotkeys: {}", e);
                 Box::new(GlobalHotkeyListener::default())
+            }
+        };
+
+        let (tray_icon, tray_rx) = match tray::build_tray() {
+            Ok((icon, rx)) => (Some(icon), Some(rx)),
+            Err(e) => {
+                eprintln!("Falha ao criar system tray: {e}");
+                (None, None)
             }
         };
 
@@ -71,6 +87,9 @@ impl SoundpadApp {
             hotkey_checker: HotkeyConflictChecker::new(),
             hotkey_to_clip: HashMap::new(),
             bard_last_tick: None,
+            _tray_icon: tray_icon,
+            tray_rx,
+            window_visible: true,
         }
     }
 
@@ -96,6 +115,9 @@ impl SoundpadApp {
             hotkey_checker: HotkeyConflictChecker::new(),
             hotkey_to_clip: HashMap::new(),
             bard_last_tick: None,
+            _tray_icon: None,
+            tray_rx: None,
+            window_visible: true,
         }
     }
 
@@ -496,6 +518,28 @@ impl SoundpadApp {
         });
     }
 
+    // ── Tray event polling ──────────────────────────────────────────
+
+    pub(crate) fn poll_tray_events(&mut self, ctx: &egui::Context) {
+        let Some(rx) = &self.tray_rx else {
+            return;
+        };
+
+        match tray::poll_menu_event(rx) {
+            TrayAction::ShowWindow => {
+                self.window_visible = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+            TrayAction::BardToggle => self.bard_toggle(),
+            TrayAction::BardSkip => self.bard_skip(),
+            TrayAction::Quit => {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            TrayAction::None => {}
+        }
+    }
+
     pub(crate) fn poll_bard_scheduler(&mut self) {
         if !matches!(self.bard_state, BardState::Playing | BardState::Ducked)
             || !self.config.bard.enabled
@@ -520,12 +564,21 @@ impl eframe::App for SoundpadApp {
         self.poll_connect_result();
         self.poll_hotkey_events();
         self.poll_bard_scheduler();
+        self.poll_tray_events(ui.ctx());
+
+        let ctx = ui.ctx();
+        let close_requested = ctx.input(|i| i.viewport().close_requested());
+        if close_requested {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            self.window_visible = false;
+        }
 
         egui::Panel::top("tabs").show_inside(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.tab, Tab::Soundpad, "🔊 Soundpad");
-                ui.selectable_value(&mut self.tab, Tab::Bard, "🎵 Bard Minstrel");
-                ui.selectable_value(&mut self.tab, Tab::Settings, "⚙️  Configurações");
+                ui.selectable_value(&mut self.tab, Tab::Soundpad, "Soundpad");
+                ui.selectable_value(&mut self.tab, Tab::Bard, "Bard Minstrel");
+                ui.selectable_value(&mut self.tab, Tab::Settings, "Configurações");
             });
         });
 
