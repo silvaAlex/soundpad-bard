@@ -201,7 +201,7 @@ mod tests {
 
         set.insert(hk1);
         // hk2 é igual a hk1, então não será inserida
-        assert_eq!(set.insert(hk2), false);
+        assert!(!set.insert(hk2));
         assert_eq!(set.len(), 1);
     }
 
