@@ -4,7 +4,7 @@ mod infrastructure;
 mod ui;
 
 use ui::SoundpadApp;
-use egui::IconData;
+use eframe::egui::IconData;
 
 fn load_icon() -> IconData {
     let image = image::load_from_memory(include_bytes!("../assets/icon-1024.png"))
