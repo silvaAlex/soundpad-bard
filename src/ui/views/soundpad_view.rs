@@ -41,24 +41,25 @@ pub fn show(ui: &mut egui::Ui, app: &mut SoundpadApp) {
         ui.text_edit_singleline(&mut app.new_clip_hotkey);
         ui.label("Volume:");
         ui.add(egui::Slider::new(&mut app.new_clip_volume, 0.0..=1.0).text("vol"));
-        if ui.button("Adicionar").clicked() {
-            if !app.new_clip_filename.is_empty() && !app.new_clip_hotkey.is_empty() {
-                let id = format!("clip_{}", app.config.soundpad.clips.len());
-                app.config
-                    .soundpad
-                    .clips
-                    .push(crate::domain::entities::SoundpadClip {
-                        id,
-                        filename: app.new_clip_filename.clone(),
-                        hotkey: app.new_clip_hotkey.clone(),
-                        volume: app.new_clip_volume,
-                    });
-                app.new_clip_filename.clear();
-                app.new_clip_hotkey.clear();
-                app.new_clip_volume = 0.8;
-                app.save_config();
-                app.sync_hotkeys();
-            }
+        if ui.button("Adicionar").clicked()
+            && !app.new_clip_filename.is_empty()
+            && !app.new_clip_hotkey.is_empty()
+        {
+            let id = format!("clip_{}", app.config.soundpad.clips.len());
+            app.config
+                .soundpad
+                .clips
+                .push(crate::domain::entities::SoundpadClip {
+                    id,
+                    filename: app.new_clip_filename.clone(),
+                    hotkey: app.new_clip_hotkey.clone(),
+                    volume: app.new_clip_volume,
+                });
+            app.new_clip_filename.clear();
+            app.new_clip_hotkey.clear();
+            app.new_clip_volume = 0.8;
+            app.save_config();
+            app.sync_hotkeys();
         }
     });
 
